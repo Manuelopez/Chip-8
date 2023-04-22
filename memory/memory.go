@@ -6,7 +6,7 @@ import (
 )
 
 type Memory struct {
-	m [64][64][2]register.Register
+	m [64][64]register.Register
 }
 
 func New() *Memory {
@@ -15,8 +15,23 @@ func New() *Memory {
 	return &m
 }
 
-func (m *Memory) Write(address uint16) {
+func (m *Memory) Write(address uint16, value uint8) {
+    //address
+    hbits := address >> 4 
+    lbits := address & 0x0f
+    // values
 
+    _, lbitsVal := util.DecimalToBinary16(uint16(value))
+
+    m.m[hbits][lbits].Write(lbitsVal)
+}
+
+func (m *Memory) Read(address uint16) [8]bool{
+    hbits := address >> 4 
+    lbits := address & 0x0f
+    // values
+
+    return m.m[hbits][lbits].Read()
 }
 
 func (m *Memory) writeFonts() {
@@ -44,15 +59,14 @@ func (m *Memory) writeFonts() {
     for i:= 0x050; i <= 0x09f; i++{
         // mem address
         hbits := i >> 4;
-        lbits := i & 0x09f
+        lbits := i & 0x0f
 
         // value
         val := fonts[p]
-        hbitsVal, lbitsVal := util.DecimalToBinary16(val)
+        _, lbitsVal := util.DecimalToBinary16(val)
 
         // 
-        m.m[hbits][lbits][0].Write(hbitsVal)
-        m.m[hbits][lbits][1].Write(lbitsVal)
+        m.m[hbits][lbits].Write(lbitsVal)
 
         p++
     }

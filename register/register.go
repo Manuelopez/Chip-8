@@ -4,6 +4,10 @@ type Register struct{
    V [8]bool
 }
 
+func New() *Register{
+    return &Register{}
+}
+
 func (r *Register) Write(value [8]bool){
     r.V = value
 }

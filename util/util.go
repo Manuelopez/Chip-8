@@ -36,3 +36,34 @@ func DecimalToBinary16(value uint16) ([8]bool, [8]bool) {
     return hbits, lbits
 
 }
+
+func BinaryToDecilam(value []bool) int64 {
+    str := ""
+    for _, x := range value{
+        if(x == true){
+            str += "1" 
+        }else {
+            str += "0"
+        }
+    }
+
+    r, _ := strconv.ParseInt(str, 2, 64)
+
+    return r
+}
+
+
+func BinaryToDecilam8(value [8]bool) int64 {
+    str := ""
+    for _, x := range value{
+        if(x == true){
+            str += "1" 
+        }else {
+            str += "0"
+        }
+    }
+
+    r, _ := strconv.ParseInt(str, 2, 64)
+
+    return r
+}
