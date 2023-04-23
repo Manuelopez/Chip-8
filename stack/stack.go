@@ -7,12 +7,12 @@ import (
 
 type Stack struct {
 	Stack   [80]register.Register
-	pointer uint8
+	pointer uint16
 
 }
 
 func New() *Stack{
-    return &Stack{}
+    return &Stack{pointer: 0}
 }
 
 func (s *Stack) Push(val uint16) {

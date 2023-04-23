@@ -1,8 +1,7 @@
 package main
 
 import (
-	"chip-8/display"
-	"time"
+	"chip-8/chip"
 )
 
 const (
@@ -11,10 +10,16 @@ const (
 )
 
 func main() {
-    d := display.New()
-    d.Start()
-    time.Sleep(time.Second*5)
-    d.Update()
-    time.Sleep(time.Second*5)
+    c := chip.New(false)
+    
+   // n := "./ibm_logo.ch8"
+    n := "./2-ibm-logo.ch8"
+
+    //n := "./test_opcode.ch8"
+    c.LoadRom(n, 0x200)
+    c.Start()
+
+
+
 }
 

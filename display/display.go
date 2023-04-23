@@ -46,7 +46,6 @@ func (d *Display) Start() {
 }
 
 func (d *Display) Update(){
-
 	for x := 0; x < d.screenWidth; x++ {
 		for y := 0; y < d.screenHeight; y++ {
 
