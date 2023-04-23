@@ -2,6 +2,7 @@ package chip
 
 import (
 	"chip-8/display"
+	"chip-8/keyboard"
 	"chip-8/memory"
 	"chip-8/register"
 	"chip-8/stack"
@@ -10,32 +11,36 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"time"
+
+	"github.com/nsf/termbox-go"
 )
 
 type Chip struct {
 	Memory      *memory.Memory
 	Display     *display.Display
 	Stack       *stack.Stack
+    Keyboard    *keyboard.Keyboard
 	PC          uint
 	I           [2]*register.Register
 	Delay       *timer.Timer
 	Sound       *timer.Timer
 	RegisterMap map[int]*register.Register
-    old bool
+	old         bool
 }
 
-func New(old bool) *Chip {
+func New(old bool, keyboardCgf map[byte]byte) *Chip {
 	c := Chip{
 		Memory:  memory.New(),
 		Display: display.New(),
 		Stack:   stack.New(),
+        Keyboard: keyboard.New(keyboardCgf),
 		PC:      0,
 		I:       [2]*register.Register{register.New(), register.New()},
 		Delay:   timer.New(),
 		Sound:   timer.New(),
-        old: old,
+		old:     old,
 	}
-    c.RegisterMap = make(map[int]*register.Register)
+	c.RegisterMap = make(map[int]*register.Register)
 	c.RegisterMap[0] = register.New()
 	c.RegisterMap[1] = register.New()
 	c.RegisterMap[2] = register.New()
@@ -56,38 +61,72 @@ func New(old bool) *Chip {
 	return &c
 }
 
-func (c * Chip) LoadRom(fileName string, startAddr uint16) error{
-    data, err := ioutil.ReadFile(fileName)
-    if err != nil{
-        return err
-    }
+func (c *Chip) LoadRom(fileName string, startAddr uint16) error {
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return err
+	}
 
-    c.PC = uint(startAddr)
-    for _, d := range data{
+	c.PC = uint(startAddr)
+	for _, d := range data {
 
-        c.Memory.Write(startAddr, d)
-        startAddr++
-    }
+		c.Memory.Write(startAddr, d)
+		startAddr++
+	}
 
-    return nil
+	return nil
 }
 
 func (c *Chip) Start() {
-    c.Display.Start()
+	c.Display.Start()
 	for {
 		hbits, lbits := c.Fetch()
-        first, second, third, fourth, full := c.Decode(hbits, lbits)
-        c.Execute(first, second, third, fourth, full)
-        time.Sleep(time.Millisecond * 30)
+		first, second, third, fourth, full := c.Decode(hbits, lbits)
+		c.Execute(first, second, third, fourth, full)
+		time.Sleep(time.Millisecond * 30)
 	}
 }
 
 func (c *Chip) Fetch() ([8]bool, [8]bool) {
 	first := c.Memory.Read(uint16(c.PC))
-	second := c.Memory.Read(uint16(c.PC+1))
+	second := c.Memory.Read(uint16(c.PC + 1))
 	c.PC += 2
 
 	return first, second
+}
+
+func (c *Chip) KeyPressed(){
+    
+    for{
+		ev := termbox.PollEvent()
+        c.Keyboard.SetKey(byte(ev.Ch), true)
+        if ev.Type == termbox.EventKey{
+            if ev.Key == 0{
+
+                c.Display.Screen = [64][32]bool{}
+            }else{
+                c.Display.Screen[ev.Ch-'a'][2] = true
+            }
+
+		    if ev.Ch == 'p'  {
+                time.Sleep(time.Second *5)
+			    break
+		    }
+        }
+        c.Display.Update()
+
+ //       ev.Key = 0
+    }
+
+        termbox.Close()
+}
+
+func (c *Chip) Test(){
+    c.Display.Start()
+    go c.KeyPressed()
+    for{
+        time.Sleep(time.Millisecond * 40)
+    }
 }
 
 func (c *Chip) Decode(hbits, lbits [8]bool) (int64, int64, int64, int64, int64) {
@@ -187,78 +226,78 @@ func (c *Chip) Execute(first, second, third, fourth, full int64) {
 			result := regx + regy
 			if result > 255 {
 				c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, true})
-			}else{
+			} else {
 				c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, false})
-            }
+			}
 			_, resultB := util.DecimalToBinary16(uint16(result))
 			c.RegisterMap[int(second)].Write(resultB)
-        case 5:
+		case 5:
 			regx := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
 			regy := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
 			result := regx - regy
-			if result >=0 {
+			if result >= 0 {
 				c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, true})
-			}else{
+			} else {
 				c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, false})
-            }
+			}
 			_, resultB := util.DecimalToBinary16(uint16(result))
 			c.RegisterMap[int(second)].Write(resultB)
-        case 6:
-            if c.old{
-                vyVal := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
-                bitShifted := vyVal & 0x1
-                shiftedVal := vyVal >> 1
+		case 6:
+			if c.old {
+				vyVal := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
+				bitShifted := vyVal & 0x1
+				shiftedVal := vyVal >> 1
 
-                _, newVx := util.DecimalToBinary16(uint16(shiftedVal))
-                c.RegisterMap[int(second)].Write(newVx)
+				_, newVx := util.DecimalToBinary16(uint16(shiftedVal))
+				c.RegisterMap[int(second)].Write(newVx)
 
-                _, newVf := util.DecimalToBinary16(uint16(bitShifted)) 
-                c.RegisterMap[0xF].Write(newVf)
-                
-            }else{
-                vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
-                bitShifted := vxVal & 0x1
-                shiftedVal := vxVal >> 1
-                _, newVx := util.DecimalToBinary16(uint16(shiftedVal))
-                c.RegisterMap[int(second)].Write(newVx)
+				_, newVf := util.DecimalToBinary16(uint16(bitShifted))
+				c.RegisterMap[0xF].Write(newVf)
 
-                _, newVf := util.DecimalToBinary16(uint16(bitShifted)) 
-                c.RegisterMap[0xF].Write(newVf)
-                
-            }
-        case 0xE:
-            if c.old{
-                vyVal := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
-                bitShifted := vyVal & 0x80
-                shiftedVal := vyVal << 1
+			} else {
+				vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+				bitShifted := vxVal & 0x1
+				shiftedVal := vxVal >> 1
+				_, newVx := util.DecimalToBinary16(uint16(shiftedVal))
+				c.RegisterMap[int(second)].Write(newVx)
 
-                _, newVx := util.DecimalToBinary16(uint16(shiftedVal))
-                c.RegisterMap[int(second)].Write(newVx)
+				_, newVf := util.DecimalToBinary16(uint16(bitShifted))
+				c.RegisterMap[0xF].Write(newVf)
 
-                _, newVf := util.DecimalToBinary16(uint16(bitShifted)) 
-                c.RegisterMap[0xF].Write(newVf)
-                
-            }else{
-                vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
-                bitShifted := vxVal & 0x80
-                shiftedVal := vxVal << 1
-                _, newVx := util.DecimalToBinary16(uint16(shiftedVal))
-                c.RegisterMap[int(second)].Write(newVx)
+			}
+		case 0xE:
+			if c.old {
+				vyVal := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
+				bitShifted := vyVal & 0x80
+				shiftedVal := vyVal << 1
 
-                _, newVf := util.DecimalToBinary16(uint16(bitShifted)) 
-                c.RegisterMap[0xF].Write(newVf)
-                
-            }
+				_, newVx := util.DecimalToBinary16(uint16(shiftedVal))
+				c.RegisterMap[int(second)].Write(newVx)
 
-        case 7:
+				_, newVf := util.DecimalToBinary16(uint16(bitShifted))
+				c.RegisterMap[0xF].Write(newVf)
+
+			} else {
+				vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+				bitShifted := vxVal & 0x80
+				shiftedVal := vxVal << 1
+				_, newVx := util.DecimalToBinary16(uint16(shiftedVal))
+				c.RegisterMap[int(second)].Write(newVx)
+
+				_, newVf := util.DecimalToBinary16(uint16(bitShifted))
+				c.RegisterMap[0xF].Write(newVf)
+
+			}
+
+		case 7:
 			regx := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
 			regy := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
-			result := regy - regx  
-			if result >=0 {
+			result := regy - regx
+			if result >= 0 {
 				c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, true})
-			}else{
+			} else {
 				c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, false})
-            }
+			}
 			_, resultB := util.DecimalToBinary16(uint16(result))
 			c.RegisterMap[int(second)].Write(resultB)
 		}
@@ -269,85 +308,186 @@ func (c *Chip) Execute(first, second, third, fourth, full int64) {
 		if val1 != val2 {
 			c.PC += 2
 		}
-    case 0xA:
-        val := full & 0x0FFF
-        hbits, lbits := util.DecimalToBinary16(uint16(val))
-        c.I[0].Write(hbits)
-        c.I[1].Write(lbits)
-    case 0xB:
-        if c.old{
-            address := full & 0x0FFF
-            offset := util.BinaryToDecilam8(c.RegisterMap[0].Read())
-            c.PC = uint(address) + uint(offset)
-        }else{
-            address := full & 0x0FFF
-            offset := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
-            c.PC = uint(address) + uint(offset)
-        }
+	case 0xA:
+		val := full & 0x0FFF
+		hbits, lbits := util.DecimalToBinary16(uint16(val))
+		c.I[0].Write(hbits)
+		c.I[1].Write(lbits)
+	case 0xB:
+		if c.old {
+			address := full & 0x0FFF
+			offset := util.BinaryToDecilam8(c.RegisterMap[0].Read())
+			c.PC = uint(address) + uint(offset)
+		} else {
+			address := full & 0x0FFF
+			offset := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+			c.PC = uint(address) + uint(offset)
+		}
 
-    case 0xC:
-        randVal := int64(rand.Intn(256))
-        result := randVal & (full & 0x00FF)  
-        _, bR := util.DecimalToBinary16(uint16(result))
-        c.RegisterMap[int(second)].Write(bR)
-    case 0xD:
-        regx := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
-        regy := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
-        xcoor := regx & 63
-        originalX := xcoor
-        ycoor := regy & 31
-        c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, false})
-        hbits := c.I[0].Read()
-        lbits := c.I[1].Read()
-        ibits := make([]bool, 0)
-        for i := 0; i< 16; i++{
-            if i <8{
-                ibits = append(ibits, hbits[i])
-            }else{
+	case 0xC:
+		randVal := int64(rand.Intn(256))
+		result := randVal & (full & 0x00FF)
+		_, bR := util.DecimalToBinary16(uint16(result))
+		c.RegisterMap[int(second)].Write(bR)
+	case 0xD:
+		regx := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+		regy := util.BinaryToDecilam8(c.RegisterMap[int(third)].Read())
+		xcoor := regx & 63
+		originalX := xcoor
+		ycoor := regy & 31
+		c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, false})
+		hbits := c.I[0].Read()
+		lbits := c.I[1].Read()
+		ibits := make([]bool, 0)
+		for i := 0; i < 16; i++ {
+			if i < 8 {
+				ibits = append(ibits, hbits[i])
+			} else {
 
-                ibits = append(ibits, lbits[i-8])
-            }
-        }
+				ibits = append(ibits, lbits[i-8])
+			}
+		}
 
-        for i := 0; i < int(fourth); i++{
-            address := util.BinaryToDecilam(ibits)
-            sprite := c.Memory.Read(uint16(address) + uint16(i))
-            for _, bit := range sprite{
-                if bit && c.Display.Screen[xcoor][ycoor]{
-                    c.Display.Screen[xcoor][ycoor] = false
-                    c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, true})
-                }else if bit && !c.Display.Screen[xcoor][ycoor]{
-                    c.Display.Screen[xcoor][ycoor] = bit
+		for i := 0; i < int(fourth); i++ {
+			address := util.BinaryToDecilam(ibits)
+			sprite := c.Memory.Read(uint16(address) + uint16(i))
+			for _, bit := range sprite {
+				if bit && c.Display.Screen[xcoor][ycoor] {
+					c.Display.Screen[xcoor][ycoor] = false
+					c.RegisterMap[0xF].Write([8]bool{false, false, false, false, false, false, false, true})
+				} else if bit && !c.Display.Screen[xcoor][ycoor] {
+					c.Display.Screen[xcoor][ycoor] = bit
+				}
+				if xcoor == 63 {
+					xcoor = 0
+					break
+				}
+				xcoor++
+
+			}
+			xcoor = originalX
+
+			ycoor++
+
+			if ycoor == 32 {
+				break
+			}
+
+		}
+		c.Display.Update()
+
+	case 0xE:
+		// TODO need to check for keys
+
+	case 0xF:
+		switch {
+		case third == 0 && fourth == 7:
+			// TODO timer
+		case third == 1 && fourth == 5:
+			// TODO timer
+		case third == 1 && fourth == 8:
+			// TODO timer
+
+		case third == 1 && fourth == 0xE:
+			hIbit := c.I[0].Read()
+			lIbit := c.I[1].Read()
+			iReg := make([]bool, 0)
+
+			for i := 0; i < 16; i++ {
+				if i < 8 {
+					iReg = append(iReg, hIbit[i])
+				} else {
+					iReg = append(iReg, lIbit[i-8])
+				}
+
+                val := util.BinaryToDecilam(iReg)
+                regxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+                sum := val + regxVal
+                nhbit, nlbit := util.DecimalToBinary16(uint16(sum))
+                c.I[0].Write(nhbit)
+                c.I[1].Write(nlbit)
+                if !c.old{
+                    if sum > 0x0FFF{
+                        c.RegisterMap[0xF].Write([8]bool{true, true, true, true, true, true, true, true})
+                    }
                 }
-                if xcoor == 63{
-                    xcoor = 0
-                    break
+			}
+
+        case third == 0 && fourth == 0xA:
+            // TODO KEY LOGIC
+        case third == 2 && fourth == 0x9:
+            // TODO font
+        case third == 3 && fourth == 3:
+            vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+            i2 := vxVal % 10
+            vxVal = vxVal / 10
+            i1 := vxVal % 10
+            vxVal = vxVal / 10
+            i0 := vxVal % 10
+            
+            hbit, lbit := c.I[0].Read(), c.I[0].Read()
+            iBits := make([]bool, 0)
+            for i := 0; i < 16; i++{
+                if i < 8{
+                    iBits = append(iBits, hbit[i])
+                }else {
+                    iBits = append(iBits, lbit[i-8])
                 }
-                xcoor++;
+            } 
 
+            address := util.BinaryToDecilam(iBits)
+            c.Memory.Write(uint16(address), uint8(i0))
+            c.Memory.Write(uint16(address + 1), uint8(i1))
+            c.Memory.Write(uint16(address + 2), uint8(i2))
+        
+        case third == 5 && fourth == 5:
+            hbit, lbit := c.I[0].Read(), c.I[0].Read()
+            iBits := make([]bool, 0)
+            for i := 0; i < 16; i++{
+                if i < 8{
+                    iBits = append(iBits, hbit[i])
+                }else {
+                    iBits = append(iBits, lbit[i-8])
+                }
+            } 
+
+            address := util.BinaryToDecilam(iBits)
+            for i:= 0; i <= int(second); i++{
+                vx := util.BinaryToDecilam8(c.RegisterMap[i].Read())
+                c.Memory.Write(uint16(address), uint8(vx))
+                address++
             }
-            xcoor = originalX
+            if c.old{
+                hnbit, lnbit := util.DecimalToBinary16(uint16(address))
+                c.I[0].Write(hnbit)
+                c.I[1].Write(lnbit)
+            }
+        case third == 6 && fourth == 5:
+            hbit, lbit := c.I[0].Read(), c.I[0].Read()
+            iBits := make([]bool, 0)
+            for i := 0; i < 16; i++{
+                if i < 8{
+                    iBits = append(iBits, hbit[i])
+                }else {
+                    iBits = append(iBits, lbit[i-8])
+                }
+            } 
 
-            ycoor++
-
-            if ycoor == 32{
-                break
+            address := util.BinaryToDecilam(iBits)
+            for i:= 0; i <= int(second); i++{
+                bits := c.Memory.Read(uint16(address))
+                c.RegisterMap[i].Write(bits)
+                address++
+            }
+            if c.old{
+                hnbit, lnbit := util.DecimalToBinary16(uint16(address))
+                c.I[0].Write(hnbit)
+                c.I[1].Write(lnbit)
             }
 
-        }
-        c.Display.Update()
 
+		}
 
-    
-
-
-
-    
 	}
 
 }
-
-
-
-
-

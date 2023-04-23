@@ -17,6 +17,7 @@ func New() *Display {
 func (d *Display) Start() {
 
 	err := termbox.Init()
+    
 	if err != nil {
 		panic(err)
 	}
@@ -33,15 +34,6 @@ func (d *Display) Start() {
 	termbox.Flush()
 
 	// Wait for a key press
-	go func() {
-		for {
-			ev := termbox.PollEvent()
-			if ev.Type == termbox.EventKey {
-				break
-			}
-		}
-        termbox.Close()
-	}()
 
 }
 
