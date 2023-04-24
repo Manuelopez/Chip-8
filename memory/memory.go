@@ -17,8 +17,9 @@ func New() *Memory {
 
 func (m *Memory) Write(address uint16, value uint8) {
     //address
-    hbits := address >> 4 
-    lbits := address & 0x0f
+    address = address & 0xFFF
+    hbits := (address >> 6)
+	lbits := address & 0x3f 
     // values
 
     _, lbitsVal := util.DecimalToBinary16(uint16(value))
@@ -27,8 +28,10 @@ func (m *Memory) Write(address uint16, value uint8) {
 }
 
 func (m *Memory) Read(address uint16) [8]bool{
-    hbits := address >> 4 
-    lbits := address & 0x0f
+
+    address = address & 0xFFF
+   hbits := (address >> 6)
+	lbits := address & 0x3f 
     // values
 
     return m.m[hbits][lbits].Read()

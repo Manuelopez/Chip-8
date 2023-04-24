@@ -19,7 +19,7 @@ type Chip struct {
 	Memory      *memory.Memory
 	Display     *display.Display
 	Stack       *stack.Stack
-    Keyboard    *keyboard.Keyboard
+	Keyboard    *keyboard.Keyboard
 	PC          uint
 	I           [2]*register.Register
 	Delay       *timer.Timer
@@ -30,15 +30,15 @@ type Chip struct {
 
 func New(old bool, keyboardCgf map[byte]byte) *Chip {
 	c := Chip{
-		Memory:  memory.New(),
-		Display: display.New(),
-		Stack:   stack.New(),
-        Keyboard: keyboard.New(keyboardCgf),
-		PC:      0,
-		I:       [2]*register.Register{register.New(), register.New()},
-		Delay:   timer.New(),
-		Sound:   timer.New(),
-		old:     old,
+		Memory:   memory.New(),
+		Display:  display.New(),
+		Stack:    stack.New(),
+		Keyboard: keyboard.New(keyboardCgf),
+		PC:       0,
+		I:        [2]*register.Register{register.New(), register.New()},
+		Delay:    timer.New(),
+		Sound:    timer.New(),
+		old:      old,
 	}
 	c.RegisterMap = make(map[int]*register.Register)
 	c.RegisterMap[0] = register.New()
@@ -78,11 +78,14 @@ func (c *Chip) LoadRom(fileName string, startAddr uint16) error {
 }
 
 func (c *Chip) Start() {
-	c.Display.Start()
+    c.Display.Start()
+    go c.KeyPressed()
+
 	for {
 		hbits, lbits := c.Fetch()
 		first, second, third, fourth, full := c.Decode(hbits, lbits)
 		c.Execute(first, second, third, fourth, full)
+
 		time.Sleep(time.Millisecond * 30)
 	}
 }
@@ -95,38 +98,50 @@ func (c *Chip) Fetch() ([8]bool, [8]bool) {
 	return first, second
 }
 
-func (c *Chip) KeyPressed(){
-    
-    for{
-		ev := termbox.PollEvent()
-        c.Keyboard.SetKey(byte(ev.Ch), true)
-        if ev.Type == termbox.EventKey{
-            if ev.Key == 0{
+func (c *Chip) KeyPressed() {
 
-                c.Display.Screen = [64][32]bool{}
-            }else{
-                c.Display.Screen[ev.Ch-'a'][2] = true
+	events := make(chan termbox.Event)
+	go func() {
+		for {
+			events <- termbox.PollEvent()
+		}
+	}()
+    ticker := time.NewTicker(time.Millisecond * 110)
+
+    first := true
+    lastChar := rune(0)
+	for range ticker.C{
+		select {
+		case ev := <-events:
+			if ev.Ch == 'p' {
+				termbox.Close()
+				return
+			}
+
+            c.Keyboard.SetKey(byte(ev.Ch), true)
+
+            if first || lastChar != ev.Ch{
+               time.Sleep(time.Millisecond * 550)
+                first = false
             }
 
-		    if ev.Ch == 'p'  {
-                time.Sleep(time.Second *5)
-			    break
-		    }
-        }
-        c.Display.Update()
+            lastChar = ev.Ch
 
- //       ev.Key = 0
-    }
+		default:
+            c.Keyboard.SetAllToFalse()
+            first = true
+            lastChar = 0
+		}
+	}
 
-        termbox.Close()
 }
 
-func (c *Chip) Test(){
-    c.Display.Start()
-    go c.KeyPressed()
-    for{
-        time.Sleep(time.Millisecond * 40)
-    }
+func (c *Chip) Test() {
+	termbox.Init()
+	go c.KeyPressed()
+	for {
+		time.Sleep(time.Millisecond * 40)
+	}
 }
 
 func (c *Chip) Decode(hbits, lbits [8]bool) (int64, int64, int64, int64, int64) {
@@ -161,8 +176,19 @@ func (c *Chip) Execute(first, second, third, fourth, full int64) {
 			c.Display.Screen = [64][32]bool{}
 			c.Display.Update()
 		case second == 0 && third == 0xE && fourth == 0xE:
-			counter := c.Stack.Pop()
-			val := util.BinaryToDecilam8(counter)
+			high, low := c.Stack.Pop()
+            allbits := make([]bool, 0)
+            for i:= 0; i < 16; i++{
+                if i < 8{
+                    allbits = append(allbits, high[i])
+                }else{
+
+                    allbits = append(allbits, low[i-8])
+                }
+            }
+			val := util.BinaryToDecilam(allbits)
+            
+
 			c.PC = uint(val)
 		}
 	case 1:
@@ -358,8 +384,7 @@ func (c *Chip) Execute(first, second, third, fourth, full int64) {
 				} else if bit && !c.Display.Screen[xcoor][ycoor] {
 					c.Display.Screen[xcoor][ycoor] = bit
 				}
-				if xcoor == 63 {
-					xcoor = 0
+				if xcoor >= 63 {
 					break
 				}
 				xcoor++
@@ -378,6 +403,17 @@ func (c *Chip) Execute(first, second, third, fourth, full int64) {
 
 	case 0xE:
 		// TODO need to check for keys
+        switch{
+        case third == 9 && fourth == 0xE:
+            if c.Keyboard.GetKey(byte(second)){
+                c.PC += 2
+            }
+        case third == 0xA && fourth == 0x1:
+            if !c.Keyboard.GetKey(byte(second)){
+                c.PC += 2
+            }
+        }
+        
 
 	case 0xF:
 		switch {
@@ -400,91 +436,97 @@ func (c *Chip) Execute(first, second, third, fourth, full int64) {
 					iReg = append(iReg, lIbit[i-8])
 				}
 
-                val := util.BinaryToDecilam(iReg)
-                regxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
-                sum := val + regxVal
-                nhbit, nlbit := util.DecimalToBinary16(uint16(sum))
-                c.I[0].Write(nhbit)
-                c.I[1].Write(nlbit)
-                if !c.old{
-                    if sum > 0x0FFF{
-                        c.RegisterMap[0xF].Write([8]bool{true, true, true, true, true, true, true, true})
-                    }
-                }
+				val := util.BinaryToDecilam(iReg)
+				regxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+				sum := val + regxVal
+				nhbit, nlbit := util.DecimalToBinary16(uint16(sum))
+				c.I[0].Write(nhbit)
+				c.I[1].Write(nlbit)
+				if !c.old {
+					if sum > 0x0FFF {
+						c.RegisterMap[0xF].Write([8]bool{true, true, true, true, true, true, true, true})
+					}
+				}
 			}
 
-        case third == 0 && fourth == 0xA:
-            // TODO KEY LOGIC
-        case third == 2 && fourth == 0x9:
-            // TODO font
-        case third == 3 && fourth == 3:
-            vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
-            i2 := vxVal % 10
-            vxVal = vxVal / 10
-            i1 := vxVal % 10
-            vxVal = vxVal / 10
-            i0 := vxVal % 10
-            
-            hbit, lbit := c.I[0].Read(), c.I[0].Read()
-            iBits := make([]bool, 0)
-            for i := 0; i < 16; i++{
-                if i < 8{
-                    iBits = append(iBits, hbit[i])
-                }else {
-                    iBits = append(iBits, lbit[i-8])
-                }
-            } 
-
-            address := util.BinaryToDecilam(iBits)
-            c.Memory.Write(uint16(address), uint8(i0))
-            c.Memory.Write(uint16(address + 1), uint8(i1))
-            c.Memory.Write(uint16(address + 2), uint8(i2))
-        
-        case third == 5 && fourth == 5:
-            hbit, lbit := c.I[0].Read(), c.I[0].Read()
-            iBits := make([]bool, 0)
-            for i := 0; i < 16; i++{
-                if i < 8{
-                    iBits = append(iBits, hbit[i])
-                }else {
-                    iBits = append(iBits, lbit[i-8])
-                }
-            } 
-
-            address := util.BinaryToDecilam(iBits)
-            for i:= 0; i <= int(second); i++{
-                vx := util.BinaryToDecilam8(c.RegisterMap[i].Read())
-                c.Memory.Write(uint16(address), uint8(vx))
-                address++
+		case third == 0 && fourth == 0xA:
+			// TODO KEY LOGIC
+            val := c.Keyboard.GetKeyPressed()
+            if val == 20{
+                c.PC -= 2
+            }else{
+                _, lbits := util.DecimalToBinary16(uint16(val))
+                c.RegisterMap[int(second)].Write(lbits)
             }
-            if c.old{
-                hnbit, lnbit := util.DecimalToBinary16(uint16(address))
-                c.I[0].Write(hnbit)
-                c.I[1].Write(lnbit)
-            }
-        case third == 6 && fourth == 5:
-            hbit, lbit := c.I[0].Read(), c.I[0].Read()
-            iBits := make([]bool, 0)
-            for i := 0; i < 16; i++{
-                if i < 8{
-                    iBits = append(iBits, hbit[i])
-                }else {
-                    iBits = append(iBits, lbit[i-8])
-                }
-            } 
+		case third == 2 && fourth == 0x9:
+			// TODO font
+		case third == 3 && fourth == 3:
+			vxVal := util.BinaryToDecilam8(c.RegisterMap[int(second)].Read())
+			i2 := vxVal % 10
+			vxVal = vxVal / 10
+			i1 := vxVal % 10
+			vxVal = vxVal / 10
+			i0 := vxVal % 10
 
-            address := util.BinaryToDecilam(iBits)
-            for i:= 0; i <= int(second); i++{
-                bits := c.Memory.Read(uint16(address))
-                c.RegisterMap[i].Write(bits)
-                address++
-            }
-            if c.old{
-                hnbit, lnbit := util.DecimalToBinary16(uint16(address))
-                c.I[0].Write(hnbit)
-                c.I[1].Write(lnbit)
-            }
+			hbit, lbit := c.I[0].Read(), c.I[1].Read()
+			iBits := make([]bool, 0)
+			for i := 0; i < 16; i++ {
+				if i < 8 {
+					iBits = append(iBits, hbit[i])
+				} else {
+					iBits = append(iBits, lbit[i-8])
+				}
+			}
 
+			address := util.BinaryToDecilam(iBits)
+			c.Memory.Write(uint16(address), uint8(i0))
+			c.Memory.Write(uint16(address+1), uint8(i1))
+			c.Memory.Write(uint16(address+2), uint8(i2))
+
+		case third == 5 && fourth == 5:
+			hbit, lbit := c.I[0].Read(), c.I[1].Read()
+			iBits := make([]bool, 0)
+			for i := 0; i < 16; i++ {
+				if i < 8 {
+					iBits = append(iBits, hbit[i])
+				} else {
+					iBits = append(iBits, lbit[i-8])
+				}
+			}
+
+			address := util.BinaryToDecilam(iBits)
+			for i := 0; i <= int(second); i++ {
+				vx := util.BinaryToDecilam8(c.RegisterMap[i].Read())
+				c.Memory.Write(uint16(address), uint8(vx))
+				address++ 
+			}
+			if c.old {
+				hnbit, lnbit := util.DecimalToBinary16(uint16(address))
+				c.I[0].Write(hnbit)
+				c.I[1].Write(lnbit)
+			}
+		case third == 6 && fourth == 5:
+			hbit, lbit := c.I[0].Read(), c.I[1].Read()
+			iBits := make([]bool, 0)
+			for i := 0; i < 16; i++ {
+				if i < 8 {
+					iBits = append(iBits, hbit[i])
+				} else {
+					iBits = append(iBits, lbit[i-8])
+				}
+			}
+
+			address := util.BinaryToDecilam(iBits)
+			for i := 0; i <= int(second); i++ {
+				bits := c.Memory.Read(uint16(address))
+				c.RegisterMap[i].Write(bits)
+				address++
+			}
+			if c.old {
+				hnbit, lnbit := util.DecimalToBinary16(uint16(address))
+				c.I[0].Write(hnbit)
+				c.I[1].Write(lnbit)
+			}
 
 		}
 

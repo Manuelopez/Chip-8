@@ -6,7 +6,7 @@ import (
 )
 
 type Stack struct {
-	Stack   [80]register.Register
+	Stack   [80][2]register.Register
 	pointer uint16
 
 }
@@ -19,24 +19,28 @@ func (s *Stack) Push(val uint16) {
 	if s.pointer < 80 {
 		s.pointer++
 
-		_, low := util.DecimalToBinary16(val)
+		high, low := util.DecimalToBinary16(val)
 
-		s.Stack[s.pointer].Write(low)
+		s.Stack[s.pointer][0].Write(high)
+		s.Stack[s.pointer][1].Write(low)
 	}
 
 }
 
-func (s *Stack) Pop() (low [8]bool) {
-	low = s.Stack[s.pointer].Read()
+func (s *Stack) Pop() (high, low [8]bool) {
+
+	high = s.Stack[s.pointer][0].Read()
+	low = s.Stack[s.pointer][1].Read()
 	if s.pointer > 0 {
 		s.pointer--
 	}
 
-	return low
+	return high, low
 }
 
-func (s *Stack) Peek() (low [8]bool){
-	low = s.Stack[s.pointer].Read()
+func (s *Stack) Peek() (high, low [8]bool){
+	high = s.Stack[s.pointer][0].Read()
+	low = s.Stack[s.pointer][1].Read()
 
-	return low
+	return high, low
 }

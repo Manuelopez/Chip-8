@@ -1,5 +1,6 @@
 package keyboard
 
+
 type Keyboard struct{
     CFG map[byte]byte
     Keys map[byte]bool
@@ -35,4 +36,19 @@ func (k *Keyboard) SetKey(key byte, val bool){
     k.Keys[address] = val
 }
 
+func (k *Keyboard) SetAllToFalse(){
+    for keys, _ := range k.Keys{
+        k.Keys[keys] = false
+    }
+}
 
+func (k *Keyboard) GetKeyPressed() (byte){
+
+    for keys, _ := range k.Keys{
+        if k.Keys[keys]{
+            return keys
+        }
+    }
+
+    return 20
+}
