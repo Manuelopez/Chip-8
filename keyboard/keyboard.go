@@ -1,7 +1,10 @@
 package keyboard
 
+import "sync"
+
 
 type Keyboard struct{
+    mu sync.Mutex
     CFG map[byte]byte
     Keys map[byte]bool
 }
@@ -26,17 +29,24 @@ func New(cfg map[byte]byte) *Keyboard{
 
 }
     
-func (k *Keyboard) GetKey(key byte) bool{
-    val := k.CFG[key]
-    return k.Keys[val]
+func (k *Keyboard) GetKey(key byte) (bool){
+    k.mu.Lock()
+    defer k.mu.Unlock()
+    return k.Keys[key]
 }
 
 func (k *Keyboard) SetKey(key byte, val bool){
+
+    k.mu.Lock()
+    defer k.mu.Unlock()
     address := k.CFG[key]
     k.Keys[address] = val
 }
 
 func (k *Keyboard) SetAllToFalse(){
+    
+    k.mu.Lock()
+    defer k.mu.Unlock()
     for keys, _ := range k.Keys{
         k.Keys[keys] = false
     }
@@ -44,6 +54,8 @@ func (k *Keyboard) SetAllToFalse(){
 
 func (k *Keyboard) GetKeyPressed() (byte){
 
+    k.mu.Lock()
+    defer k.mu.Unlock()
     for keys, _ := range k.Keys{
         if k.Keys[keys]{
             return keys

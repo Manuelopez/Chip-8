@@ -30,17 +30,32 @@ func main() {
 
     c := chip.New(false, keyboard)
     
-   // n := "./ibm_logo.ch8"
+    //    test display
+    // n := "./ibm_logo.ch8"
     //n := "./2-ibm-logo.ch8"
 
+    //    test codes
     //n := "./test_opcode.ch8"
-    n := "./test2.ch8"
+    //n := "./test2.ch8"
+
+    //    falgs
+    //n := "./4-flags.ch8"
+
+    //    quirks
+    //n := "./5-quirks.ch8"
+
+    //    keyboard
+    //n := "./6-keypad.ch8"
+
+    // game
+
+    //n := "./invaders.rom"
+    //n := "./connect4.rom"
+    n := "./pong.rom"
+    
+
     c.LoadRom(n, 0x200)
     c.Start()
-
-
-
-
-
+   // c.Test()
 }
 

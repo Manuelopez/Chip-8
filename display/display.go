@@ -31,7 +31,7 @@ func (d *Display) Start() {
 	}
 
 	// Update the screen
-	termbox.Flush()
+    termbox.Flush()
 
 	// Wait for a key press
 
